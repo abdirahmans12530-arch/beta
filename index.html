@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PointHeist Game</title>
+<style>
+body { margin:0; padding:0; font-family:sans-serif; text-align:center; background:#222; color:white; }
+h1 { margin:20px 0; font-size:32px; }
+button { padding:10px 20px; margin:10px; border:none; border-radius:5px; font-size:16px; cursor:pointer; }
+.hidden { display:none; }
+.player-zone { display:inline-block; width:45%; max-width:200px; height:100px; margin:5px; padding:10px; border-radius:10px; font-size:18px; color:white; position:relative; transition: transform 0.3s; }
+#zoneRed { background:#FF4444; }
+#zoneBlue { background:#4488FF; }
+#zoneGreen { background:#44FF44; color:black; }
+#zoneYellow { background:#FFFF44; color:black; }
+.progress-bar { width:100%; height:12px; background:#555; border-radius:5px; margin-top:5px; }
+.progress-fill { height:100%; border-radius:5px; background:white; width:100%; transition: width 0.5s, background 0.5s; }
+#puzzleText { margin-top:10px; font-size:16px; min-height:50px; }
+.swapBtn { margin-top:10px; background:#AA00FF; color:white; }
+.swapChoice { margin-top:5px; }
+.confetti { position:absolute; width:5px; height:5px; border-radius:50%; animation:fall 1s linear forwards; }
+@keyframes fall { to { transform: translateY(150px) rotate(360deg); opacity:0; } }
+</style>
+</head>
+<body>
+
+<!-- Home Screen -->
+<div id="homeScreen">
+  <h1>PointHeist 🎮</h1>
+  <button id="startBtnHome">Start Game</button>
+  <button id="rulesBtnHome">Game Rules</button>
+  <div id="rulesText" class="hidden">
+    <p>Answer puzzles correctly to reduce your points minimally. Swap points strategically!</p>
+  </div>
+</div>
+
+<!-- Player Selection Screen -->
+<div id="playerSelectScreen" class="hidden">
+  <h1>Choose Number of Players</h1>
+  <button class="playerNumBtn" data-num="2">2 Players</button>
+  <button class="playerNumBtn" data-num="3">3 Players</button>
+  <button class="playerNumBtn" data-num="4">4 Players</button>
+</div>
+
+<!-- Game Screen -->
+<div id="gameScreen" class="hidden">
+  <h1>PointHeist Game 🎮</h1>
+  <div id="roundText">Round 1</div>
+  <div id="timer">Time: 15</div>
+  <div id="zonesContainer"></div>
+  <div id="puzzleText"></div>
+  <div id="message"></div>
+  <div id="pointsText"></div>
+  <div id="answerBtns"></div>
+  <button id="swapBtn" class="swapBtn">SWAP Points</button>
+  <div id="swapChoice" class="swapChoice"></div>
+</div>
+
+<script>
+// ===== VARIABLES =====
+let playerPoints = [];
+let playerNames = ["Red","Blue","Green","Yellow"];
+let currentRound = 1;
+const totalRounds = 20;
+let chosenPlayer = -1;
+let timerInterval;
+let numPlayers = 4;
+
+// DOM
+const homeScreen = document.getElementById("homeScreen");
+const playerSelectScreen = document.getElementById("playerSelectScreen");
+const gameScreen = document.getElementById("gameScreen");
+const rulesBtnHome = document.getElementById("rulesBtnHome");
+const rulesText = document.getElementById("rulesText");
+const zonesContainer = document.getElementById("zonesContainer");
+const puzzleText = document.getElementById("puzzleText");
+const pointsText = document.getElementById("pointsText");
+const roundText = document.getElementById("roundText");
+const answerBtnsDiv = document.getElementById("answerBtns");
+const swapBtn = document.getElementById("swapBtn");
+const swapChoice = document.getElementById("swapChoice");
+const startBtnHome = document.getElementById("startBtnHome");
+
+// ===== SHOW RULES =====
+rulesBtnHome.onclick = ()=>{ rulesText.classList.toggle("hidden"); }
+
+// ===== START GAME =====
+startBtnHome.onclick = ()=>{
+  homeScreen.classList.add("hidden");
+  playerSelectScreen.classList.remove("hidden");
+}
+
+// ===== SELECT NUMBER OF PLAYERS =====
+document.querySelectorAll(".playerNumBtn").forEach(btn=>{
+  btn.onclick = ()=>{
+    numPlayers = parseInt(btn.dataset.num);
+    playerPoints = Array(numPlayers).fill(40);
+    startGame();
+  }
+});
+
+// ===== CREATE ZONES =====
+let zones=[], bars=[], buttons=[];
+function createZones(){
+  zonesContainer.innerHTML="";
+  for(let i=0;i<numPlayers;i++){
+    let z = document.createElement("div");
+    z.className = "player-zone";
+    z.id = "zone"+i;
+    z.innerHTML = playerNames[i];
+    let barDiv = document.createElement("div");
+    barDiv.className="progress-bar";
+    let barFill = document.createElement("div");
+    barFill.className="progress-fill";
+    barDiv.appendChild(barFill);
+    z.appendChild(barDiv);
+    zonesContainer.appendChild(z);
+    zones.push(z);
+    bars.push(barFill);
+  }
+}
+
+// ===== UPDATE UI =====
+function updateUI(){
+  pointsText.innerHTML="";
+  for(let i=0;i<numPlayers;i++){
+    let w=Math.max(playerPoints[i],0)*2.5;
+    bars[i].style.width=w+"%";
+    if(playerPoints[i]>=30) bars[i].style.background="#44FF44";
+    else if(playerPoints[i]>=15) bars[i].style.background="#FFFF44";
+    else bars[i].style.background="#FF4444";
+    pointsText.innerHTML+=playerNames[i]+": "+playerPoints[i]+"<br>";
+  }
+}
+
+// ===== QUESTIONS =====
+const capitalsList=[
+  {c:"Tokyo", country:"Japan"},
+  {c:"Paris", country:"France"},
+  {c:"Rome", country:"Italy"},
+  {c:"Ottawa", country:"Canada"},
+  {c:"Cairo", country:"Egypt"},
+  {c:"Berlin", country:"Germany"},
+  {c:"Moscow", country:"Russia"},
+  {c:"Beijing", country:"China"},
+  {c:"Canberra", country:"Australia"},
+  {c:"Madrid", country:"Spain"}
+];
+function generateQuestion(){
+  let type = Math.floor(Math.random()*2);
+  if(type===0){
+    let pick = capitalsList[Math.floor(Math.random()*capitalsList.length)];
+    let options = new Set();
+    options.add(pick.c);
+    while(options.size<4){
+      let o = capitalsList[Math.floor(Math.random()*capitalsList.length)].c;
+      if(o!==pick.c) options.add(o);
+    }
+    let optArr = Array.from(options);
+    optArr.sort(()=>Math.random()-0.5);
+    return {q:`Capital of ${pick.country}?`, a:pick.c, opts:optArr};
+  } else {
+    let statements=[
+      {q:"The sky is blue?", a:"True"},
+      {q:"Water freezes at 0°C?", a:"True"},
+      {q:"Elephants can fly?", a:"False"},
+      {q:"Humans need oxygen to live?", a:"True"},
+      {q:"Sun rises from the west?", a:"False"}
+    ];
+    let pick=statements[Math.floor(Math.random()*statements.length)];
+    let opts=["True","False"];
+    opts.sort(()=>Math.random()-0.5);
+    return {q:pick.q, a:pick.a, opts:opts};
+  }
+}
+
+// ===== START GAME FUNCTION =====
+function startGame(){
+  playerSelectScreen.classList.add("hidden");
+  gameScreen.classList.remove("hidden");
+  createZones();
+  createAnswerButtons();
+  startRound();
+}
+
+// ===== CREATE ANSWER BUTTONS =====
+function createAnswerButtons(){
+  answerBtnsDiv.innerHTML="";
+  buttons=[];
+  for(let i=0;i<4;i++){
+    let b = document.createElement("button");
+    answerBtnsDiv.appendChild(b);
+    buttons.push(b);
+  }
+}
+
+// ===== ROUND =====
+function startRound(){
+  if(currentRound>totalRounds){finalResults(); return;}
+  roundText.innerHTML="Round "+currentRound;
+  swapBtn.style.display="none";
+  swapChoice.innerHTML="";
+  chosenPlayer = Math.floor(Math.random()*numPlayers);
+  flashZone(chosenPlayer);
+  let puzzle = generateQuestion();
+  puzzleText.innerHTML=playerNames[chosenPlayer]+" is chosen!<br>"+puzzle.q;
+  puzzle.opts.forEach((opt,i)=>{
+    buttons[i].innerText=opt;
+    buttons[i].disabled=false;
+    buttons[i].style.background="#666";
+    buttons[i].style.color="white";
+    buttons[i].onclick = ()=>{
+      buttons.forEach(b=>b.disabled=true);
+      if(opt===puzzle.a){handleCorrect();}
+      else{handleWrong();}
+      updateUI();
+      currentRound++;
+      setTimeout(startRound,500);
+    };
+  });
+  updateUI();
+}
+
+// ===== FLASH ZONE =====
+function flashZone(i){
+  zones[i].style.transform="scale(1.3)";
+  setTimeout(()=>{zones[i].style.transform="scale(1)";},400);
+}
+
+// ===== CORRECT / WRONG =====
+function handleCorrect(){
+  playerPoints[chosenPlayer]-=2;
+  spawnConfetti(chosenPlayer);
+}
+
+function handleWrong(){
+  for(let i=0;i<numPlayers;i++){
+    if(i!==chosenPlayer){playerPoints[i]-=2; if(playerPoints[i]<0)playerPoints[i]=0;}
+  }
+}
+
+// ===== CONFETTI =====
+function spawnConfetti(playerIndex){
+  for(let i=0;i<20;i++){
+    let conf=document.createElement("div");
+    conf.className="confetti";
+    conf.style.background=["#FF4444","#4488FF","#44FF44","#FFFF44"][playerIndex];
+    conf.style.left=(zones[playerIndex].offsetLeft + Math.random()*70)+"px";
+    conf.style.top=(zones[playerIndex].offsetTop + Math.random()*50)+"px";
+    document.body.appendChild(conf);
+    setTimeout(()=>{conf.remove();},1000);
+  }
+}
+
+// ===== FINAL RESULTS =====
+function finalResults(){
+  let result="";
+  for(let i=0;i<numPlayers;i++){
+    result+=playerNames[i]+": "+playerPoints[i]+"\n";
+  }
+  alert("Game Over!\n"+result);
+}
+
+</script>
+</body>
+</html>
